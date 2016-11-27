@@ -20,7 +20,7 @@ pub type Driver = lcd_hd44780::driver::Driver<Pin,
 
 impl lcd_hd44780::gpio::Sleep for Sleep {
     fn sleep(&self, ms: usize) {
-        let millis = std::time::Duration::from_millis(ms as u64);
+        let millis = std::time::Duration::new(0, 1000 * ms as u32);
         std::thread::sleep(millis);
     }
 }
@@ -33,8 +33,6 @@ enum BitMode {
 
 pub struct Simulator {
     graphics: Arc<Mutex<graphics::GraphicData>>,
-    text_direction: lcd_hd44780::commands::TextDirection,
-    auto_shift: bool,
 
     enable: bool,
     rs: Rc<Cell<PinState>>,
@@ -77,19 +75,20 @@ impl lcd_hd44780::gpio::Pin for Simulator {
                         // Clear display
                         let mut graphics = self.graphics.lock().unwrap();
                         graphics.ddram = [[0x20; 40]; 2];
-                        graphics.ac = graphics::AddressCounter::Ddram((0, 0));
+                        graphics.ac = graphics::AddressCounter::Ddram{line: 0, addr: 0};
                         graphics.offset = 0;
                     }
                     0b00000010...0b00000011 => {
                         // Return home
                         let mut graphics = self.graphics.lock().unwrap();
-                        graphics.ac = graphics::AddressCounter::Ddram((0, 0));
+                        graphics.ac = graphics::AddressCounter::Ddram{line: 0, addr: 0};
                         graphics.offset = 0;
                     }
                     data @ 0b00000100...0b00000111 => {
                         // Set Entry Mode
-                        self.text_direction = lcd_hd44780::commands::TextDirection::from_u8(data);
-                        self.auto_shift = (data & 1) != 0;
+                        let mut graphics = self.graphics.lock().unwrap();
+                        graphics.text_direction = lcd_hd44780::commands::TextDirection::from_u8(data);
+                        graphics.auto_shift = (data & 1) != 0;
                     }
                     data @ 0b00001000...0b00001111 => {
                         // Display control
@@ -108,9 +107,12 @@ impl lcd_hd44780::gpio::Pin for Simulator {
                     }
                     data @ 0b00011000...0b00011111 => {
                         // Display shift
+                        //
                         let mut graphics = self.graphics.lock().unwrap();
                         let direction =
                             lcd_hd44780::commands::Direction::from_u8(data);
+                        graphics::shift_offset(&mut graphics.offset, 40, direction.switch());
+
                         // TODO: apply direction to offset
                     }
                     data @ 0b00100000...0b00111111 => {
@@ -125,27 +127,30 @@ impl lcd_hd44780::gpio::Pin for Simulator {
                     data @ 0b01000000...0b01111111 => {
                         // Set CGRAM address
                         let mut graphics = self.graphics.lock().unwrap();
-                        let addr = (data & 0b00111111) as usize;
-                        graphics.ac = graphics::AddressCounter::Cgram(addr);
+                        let cell = (data & 0b00110000) >> 4;
+                        let addr = data & 0b00001111;
+                        graphics.ac = graphics::AddressCounter::Cgram{cell: cell, addr: addr};
                     }
                     data @ 0b10000000...0b11111111 => {
                         // Set DRAM address
                         let mut graphics = self.graphics.lock().unwrap();
-                        let mut addr = (data & 0b01111111) as usize;
-                        let line = if addr > 0x40 {
+                        let mut addr = data & 0b01111111;
+                        let line = if addr >= 0x40 {
                             addr -= 0x40;
                             1
                         } else {
                             0
                         };
-                        graphics.ac = graphics::AddressCounter::Ddram((line,
-                                                                       addr));
+                        graphics.ac = graphics::AddressCounter::Ddram{line: line,
+                                                                      addr: addr};
                     }
                     _ => unreachable!(),
                 }
             }
             PinState::High => {
                 // Data
+                let mut graphics = self.graphics.lock().unwrap();
+                graphics.write(data);
             }
         }
     }
@@ -155,8 +160,6 @@ impl Simulator {
     pub fn new() -> Self {
         Simulator {
             graphics: Arc::new(Mutex::new(graphics::GraphicData::new())),
-            text_direction: lcd_hd44780::commands::TextDirection::LeftToRight,
-            auto_shift: false,
 
             enable: false,
             bit_mode: BitMode::EightBits,

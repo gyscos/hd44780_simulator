@@ -1,4 +1,5 @@
 use lcd_hd44780;
+use lcd_hd44780::commands::{TextDirection, Direction};
 use piston_window::*;
 
 use std::io::Cursor;
@@ -12,28 +13,24 @@ pub struct Point {
 }
 
 pub enum AddressCounter {
-    Ddram((usize, usize)),
-    Cgram(usize),
+    Ddram { line: u8, addr: u8 },
+    Cgram { cell: u8, addr: u8 },
 }
 
 impl AddressCounter {
-    pub fn shift(&mut self, direction: lcd_hd44780::commands::Direction) {
-        if let &mut AddressCounter::Ddram((ref mut line, ref mut addr)) =
-               self {
-            match direction {
-                lcd_hd44780::commands::Direction::Right => {
-                    *addr += 1;
-                    if *addr > 40 {
-                        *addr = 0;
-                        *line = 1 - *line;
-                    }
+    pub fn shift(&mut self, direction: Direction) {
+        match self {
+            &mut AddressCounter::Ddram { ref mut line, ref mut addr } => {
+                if shift_offset(addr, 40, direction) {
+                    *line = 1 - *line;
                 }
-                lcd_hd44780::commands::Direction::Left => {
-                    if *addr == 0 {
-                        *addr = 40;
-                        *line = 1 - *line;
+            }
+            &mut AddressCounter::Cgram { ref mut cell, ref mut addr } => {
+                if shift_offset(addr, 8, direction) {
+                    match direction {
+                        Direction::Left => *cell -= 1,
+                        Direction::Right => *cell += 1,
                     }
-                    *addr -= 1;
                 }
             }
         }
@@ -44,14 +41,16 @@ pub struct GraphicData {
     pub ddram: [[u8; 40]; 2],
     pub cgram: [[u8; 8]; 8],
     pub cgrom: [[u8; 8]; 96],
-
     pub characters: lcd_hd44780::commands::CharacterGrid,
     pub lines: lcd_hd44780::commands::LineCount,
+
+    pub text_direction: lcd_hd44780::commands::TextDirection,
+    pub auto_shift: bool,
 
     // Address Counter
     pub ac: AddressCounter,
 
-    pub offset: usize,
+    pub offset: u8,
 
     pub display: bool,
     pub cursor: bool,
@@ -61,19 +60,63 @@ pub struct GraphicData {
 impl GraphicData {
     pub fn new() -> Self {
         GraphicData {
-            ddram: [[0x30u8; 40]; 2],
-            cgram: [[0u8; 8]; 8],
+            ddram: [[0x20; 40]; 2],
+            cgram: [[0; 8]; 8],
             cgrom: include!("font.rs"),
+
+            auto_shift: false,
+            text_direction: TextDirection::LeftToRight,
 
             characters: lcd_hd44780::commands::CharacterGrid::C5x8,
             lines: lcd_hd44780::commands::LineCount::Two,
 
-            ac: AddressCounter::Ddram((0, 0)),
+            ac: AddressCounter::Ddram { line: 0, addr: 0 },
 
             offset: 0,
             display: true,
             cursor: false,
             blink: false,
+        }
+    }
+
+    pub fn write(&mut self, data: u8) {
+        match self.ac {
+            AddressCounter::Ddram { ref mut line, ref mut addr } => {
+                self.ddram[*line as usize][*addr as usize] = data;
+                // Also shift the display maybe?
+                if self.auto_shift {
+                    shift_offset(&mut self.offset, 40,
+                                 self.text_direction.direction().switch());
+                }
+            }
+            AddressCounter::Cgram { ref mut cell, ref mut addr } => {
+                self.cgram[*cell as usize][*addr as usize] = data;
+            }
+        }
+        // Also shift the counter
+        self.ac.shift(self.text_direction.direction());
+    }
+}
+
+pub fn shift_offset(offset: &mut u8, max: u8,
+                    direction: lcd_hd44780::commands::Direction) -> bool {
+    match direction {
+        lcd_hd44780::commands::Direction::Left => {
+            let result = *offset == 0;
+            if result {
+                *offset = max;
+            }
+            *offset -= 1;
+            result
+        }
+        lcd_hd44780::commands::Direction::Right => {
+            *offset += 1;
+            if *offset == max {
+                *offset = 0;
+                true
+            } else {
+                false
+            }
         }
     }
 }
@@ -143,7 +186,7 @@ fn run_graphics(data: Arc<Mutex<GraphicData>>) {
 
             let mut draw_line = |line: &[u8], offset: Point| {
                 for (i, &code) in line.iter()
-                    .skip(data.offset)
+                    .skip(data.offset as usize)
                         .chain(line.iter())
                         .take(16)
                         .enumerate() {
