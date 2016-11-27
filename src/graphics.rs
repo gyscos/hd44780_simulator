@@ -1,4 +1,3 @@
-
 use lcd_hd44780;
 use piston_window::*;
 
@@ -18,8 +17,9 @@ enum AddressCounter {
 }
 
 pub struct GraphicData {
-    ddram: [u8; 80],
-    cgram: [u8; 64],
+    ddram: [[u8; 40]; 2],
+    cgram: [[u8; 8]; 8],
+    cgrom: [[u8; 8]; 96],
 
     characters: lcd_hd44780::commands::CharacterGrid,
     lines: lcd_hd44780::commands::LineCount,
@@ -36,8 +36,9 @@ pub struct GraphicData {
 impl GraphicData {
     pub fn new() -> Self {
         GraphicData {
-            ddram: [20u8; 80],
-            cgram: [0u8; 64],
+            ddram: [[0x30u8; 40]; 2],
+            cgram: [[0u8; 8]; 8],
+            cgrom: include!("font.rs"),
 
             characters: lcd_hd44780::commands::CharacterGrid::C5x8,
             lines: lcd_hd44780::commands::LineCount::Two,
@@ -73,15 +74,70 @@ fn run_graphics(data: Arc<Mutex<GraphicData>>) {
         .unwrap();
     let offset = Point { x: 60, y: 66 };
 
-    let cellSize = 3;
-    let spacing = 1;
+    let pixel_fill = 3;
+    let pixel_spacing = 1;
+    let pixel_size = pixel_fill + pixel_spacing;
 
+    let char_fill = Point {
+        x: pixel_size * 5,
+        y: pixel_size * 8,
+    };
     let char_spacing = 3;
+    let char_size = Point {
+        x: char_fill.x + char_spacing,
+        y: char_fill.y + char_spacing,
+    };
+
+    let color = [0.9, 0.9, 1.0, 1.0];
 
     while let Some(e) = window.next() {
         window.draw_2d(&e, |c, g| {
             image(&texture, c.transform, g);
+
+            // Draw the two lines
+            let data = data.lock().unwrap();
+
+            let first_line = &data.ddram[0];
+            let second_line = &data.ddram[1];
+
+            let mut draw_char = |character: &[u8; 8], offset: Point| {
+                for (y, &line) in character.iter().enumerate() {
+                    for x in 0..5 {
+                        if (line & 1 << x) != 0 {
+                            // The most significant bit is actually the left size
+                            // So mirror it all
+                            let x = 4 - x;
+                            rectangle(color, [(offset.x + x * pixel_size) as f64, (offset.y + y * pixel_size) as f64,
+                            pixel_fill as f64, pixel_fill as f64],
+                            c.transform, g);
+                        }
+                    }
+                }
+            };
+
+            let mut draw_line = |line: &[u8], offset: Point| {
+                for (i, &code) in line.iter()
+                    .skip(data.offset)
+                        .chain(line.iter())
+                        .take(16)
+                        .enumerate() {
+
+                            let character = if code < 8 {
+                                &data.cgram[code as usize]
+                            } else if code >= 32 {
+                                &data.cgrom[code as usize - 32]
+                            } else {
+                                panic!("Bad character code: {}", code);
+                            };
+
+                            draw_char(character, Point { x: offset.x + i * char_size.x,
+                                y: offset.y});
+
+                        }
+            };
+
+            draw_line(first_line, offset);
+            draw_line(second_line, Point { x: offset.x, y: offset.y + char_size.y });
         });
     }
-
 }
