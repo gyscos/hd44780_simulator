@@ -11,26 +11,51 @@ pub struct Point {
     pub y: usize,
 }
 
-enum AddressCounter {
-    Ddram(usize),
+pub enum AddressCounter {
+    Ddram((usize, usize)),
     Cgram(usize),
 }
 
-pub struct GraphicData {
-    ddram: [[u8; 40]; 2],
-    cgram: [[u8; 8]; 8],
-    cgrom: [[u8; 8]; 96],
+impl AddressCounter {
+    pub fn shift(&mut self, direction: lcd_hd44780::commands::Direction) {
+        if let &mut AddressCounter::Ddram((ref mut line, ref mut addr)) =
+               self {
+            match direction {
+                lcd_hd44780::commands::Direction::Right => {
+                    *addr += 1;
+                    if *addr > 40 {
+                        *addr = 0;
+                        *line = 1 - *line;
+                    }
+                }
+                lcd_hd44780::commands::Direction::Left => {
+                    if *addr == 0 {
+                        *addr = 40;
+                        *line = 1 - *line;
+                    }
+                    *addr -= 1;
+                }
+            }
+        }
+    }
+}
 
-    characters: lcd_hd44780::commands::CharacterGrid,
-    lines: lcd_hd44780::commands::LineCount,
+pub struct GraphicData {
+    pub ddram: [[u8; 40]; 2],
+    pub cgram: [[u8; 8]; 8],
+    pub cgrom: [[u8; 8]; 96],
+
+    pub characters: lcd_hd44780::commands::CharacterGrid,
+    pub lines: lcd_hd44780::commands::LineCount,
 
     // Address Counter
-    ac: AddressCounter,
+    pub ac: AddressCounter,
 
-    offset: usize,
+    pub offset: usize,
 
-    cursor: bool,
-    blink: bool,
+    pub display: bool,
+    pub cursor: bool,
+    pub blink: bool,
 }
 
 impl GraphicData {
@@ -43,9 +68,10 @@ impl GraphicData {
             characters: lcd_hd44780::commands::CharacterGrid::C5x8,
             lines: lcd_hd44780::commands::LineCount::Two,
 
-            ac: AddressCounter::Ddram(0),
+            ac: AddressCounter::Ddram((0, 0)),
 
             offset: 0,
+            display: true,
             cursor: false,
             blink: false,
         }
@@ -59,7 +85,7 @@ pub fn start_graphics(data: Arc<Mutex<GraphicData>>) {
 fn run_graphics(data: Arc<Mutex<GraphicData>>) {
     let w = 483;
     let h = 206;
-    let mut window: PistonWindow = WindowSettings::new("ili9163c simulator",
+    let mut window: PistonWindow = WindowSettings::new("hd44780 simulator",
                                                        [w, h])
         .exit_on_esc(true)
         .build()

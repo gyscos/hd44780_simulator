@@ -9,15 +9,26 @@ use std::sync::{Arc, Mutex};
 pub mod graphics;
 pub mod pin;
 
-use pin::{Pin, PinState};
+use pin::{Pin, PinState, BitPin};
 
 pub struct Sleep;
+
+pub type Driver = lcd_hd44780::driver::Driver<Pin,
+                                              Pin,
+                                              ([BitPin; 8], Simulator),
+                                              Sleep>;
 
 impl lcd_hd44780::gpio::Sleep for Sleep {
     fn sleep(&self, ms: usize) {
         let millis = std::time::Duration::from_millis(ms as u64);
         std::thread::sleep(millis);
     }
+}
+
+enum BitMode {
+    EightBits,
+    FourBits,
+    FourBits2 { buffer: u8 },
 }
 
 pub struct Simulator {
@@ -28,7 +39,9 @@ pub struct Simulator {
     enable: bool,
     rs: Rc<Cell<PinState>>,
     rw: Rc<Cell<PinState>>,
-    data: [Rc<Cell<PinState>>; 8],
+
+    bit_mode: BitMode,
+    data: Rc<Cell<u8>>,
 }
 
 impl lcd_hd44780::gpio::Pin for Simulator {
@@ -43,7 +56,98 @@ impl lcd_hd44780::gpio::Pin for Simulator {
 
         self.enable = true;
 
+        let data = match self.bit_mode {
+            BitMode::EightBits => self.data.get(),
+            BitMode::FourBits => {
+                self.bit_mode = BitMode::FourBits2 { buffer: self.data.get() };
+                return;
+            }
+            BitMode::FourBits2 { buffer } => buffer | self.data.get() >> 4,
+        };
+
         // Do stuff here
+        match self.rs.get() {
+            PinState::Low => {
+                // Instruction
+                match data {
+                    0 => {
+                        // NOOP
+                    }
+                    0b00000001 => {
+                        // Clear display
+                        let mut graphics = self.graphics.lock().unwrap();
+                        graphics.ddram = [[0x20; 40]; 2];
+                        graphics.ac = graphics::AddressCounter::Ddram((0, 0));
+                        graphics.offset = 0;
+                    }
+                    0b00000010...0b00000011 => {
+                        // Return home
+                        let mut graphics = self.graphics.lock().unwrap();
+                        graphics.ac = graphics::AddressCounter::Ddram((0, 0));
+                        graphics.offset = 0;
+                    }
+                    data @ 0b00000100...0b00000111 => {
+                        // Set Entry Mode
+                        self.text_direction = lcd_hd44780::commands::TextDirection::from_u8(data);
+                        self.auto_shift = (data & 1) != 0;
+                    }
+                    data @ 0b00001000...0b00001111 => {
+                        // Display control
+                        let mut graphics = self.graphics.lock().unwrap();
+                        graphics.display = (data & 1 << 2) != 0;
+                        graphics.cursor = (data & 1 << 1) != 0;
+                        graphics.blink = (data & 1) != 0;
+                    }
+                    data @ 0b00010000...0b00010111 => {
+                        // Cursor shift = AC shift
+                        let mut graphics = self.graphics.lock().unwrap();
+                        let direction =
+                            lcd_hd44780::commands::Direction::from_u8(data);
+                        graphics.ac.shift(direction);
+
+                    }
+                    data @ 0b00011000...0b00011111 => {
+                        // Display shift
+                        let mut graphics = self.graphics.lock().unwrap();
+                        let direction =
+                            lcd_hd44780::commands::Direction::from_u8(data);
+                        // TODO: apply direction to offset
+                    }
+                    data @ 0b00100000...0b00111111 => {
+                        // Function set
+                        self.bit_mode = if (data & 1 << 4) != 0 {
+                            BitMode::EightBits
+                        } else {
+                            BitMode::FourBits
+                        };
+                        // For now, ignore lines / font settings
+                    }
+                    data @ 0b01000000...0b01111111 => {
+                        // Set CGRAM address
+                        let mut graphics = self.graphics.lock().unwrap();
+                        let addr = (data & 0b00111111) as usize;
+                        graphics.ac = graphics::AddressCounter::Cgram(addr);
+                    }
+                    data @ 0b10000000...0b11111111 => {
+                        // Set DRAM address
+                        let mut graphics = self.graphics.lock().unwrap();
+                        let mut addr = (data & 0b01111111) as usize;
+                        let line = if addr > 0x40 {
+                            addr -= 0x40;
+                            1
+                        } else {
+                            0
+                        };
+                        graphics.ac = graphics::AddressCounter::Ddram((line,
+                                                                       addr));
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            PinState::High => {
+                // Data
+            }
+        }
     }
 }
 
@@ -55,35 +159,19 @@ impl Simulator {
             auto_shift: false,
 
             enable: false,
+            bit_mode: BitMode::EightBits,
             rs: PinState::new(),
             rw: PinState::new(),
-            data: [PinState::new(),
-                   PinState::new(),
-                   PinState::new(),
-                   PinState::new(),
-                   PinState::new(),
-                   PinState::new(),
-                   PinState::new(),
-                   PinState::new()],
+            data: Rc::new(Cell::new(0)),
         }
     }
 
-    pub fn driver
-        ()
-        -> lcd_hd44780::driver::Driver<Pin, Pin, ([Pin; 8], Self), Sleep>
-    {
+    pub fn driver() -> Driver {
         let simulator = Simulator::new();
 
         let rs = Pin::new(simulator.rs.clone());
         let rw = Pin::new(simulator.rw.clone());
-        let data = [Pin::new(simulator.data[0].clone()),
-                    Pin::new(simulator.data[1].clone()),
-                    Pin::new(simulator.data[2].clone()),
-                    Pin::new(simulator.data[3].clone()),
-                    Pin::new(simulator.data[4].clone()),
-                    Pin::new(simulator.data[5].clone()),
-                    Pin::new(simulator.data[6].clone()),
-                    Pin::new(simulator.data[7].clone())];
+        let data = BitPin::new_group(simulator.data.clone());
 
         graphics::start_graphics(simulator.graphics.clone());
 
