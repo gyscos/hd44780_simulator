@@ -143,10 +143,11 @@ fn run_graphics(data: Arc<Mutex<GraphicData>>) {
         .unwrap();
     let offset = Point { x: 60, y: 66 };
 
-    let pixel_fill = 3;
+    let pixel_size = 4;
     let pixel_spacing = 1;
-    let pixel_size = pixel_fill + pixel_spacing;
+    let pixel_fill = pixel_size - pixel_spacing;
 
+    // TODO: make this will depend on font?...
     let char_fill = Point {
         x: pixel_size * 5,
         y: pixel_size * 8,
@@ -157,7 +158,8 @@ fn run_graphics(data: Arc<Mutex<GraphicData>>) {
         y: char_fill.y + char_spacing,
     };
 
-    let color = [0.9, 0.9, 1.0, 1.0];
+    let color = [1.0, 1.0, 1.0, 0.9];
+    let background = [0.0, 0.0, 0.0, 0.2];
 
     while let Some(e) = window.next() {
         window.draw_2d(&e, |c, g| {
@@ -172,14 +174,17 @@ fn run_graphics(data: Arc<Mutex<GraphicData>>) {
             let mut draw_char = |character: &[u8; 8], offset: Point| {
                 for (y, &line) in character.iter().enumerate() {
                     for x in 0..5 {
-                        if (line & 1 << x) != 0 {
-                            // The most significant bit is actually the left size
-                            // So mirror it all
-                            let x = 4 - x;
-                            rectangle(color, [(offset.x + x * pixel_size) as f64, (offset.y + y * pixel_size) as f64,
-                            pixel_fill as f64, pixel_fill as f64],
-                            c.transform, g);
-                        }
+                        let color = if (line & 1 << x) != 0 {
+                            color
+                        } else {
+                            background
+                        };
+                        // The most significant bit is actually the left size
+                        // So mirror it all
+                        let x = 4 - x;
+                        rectangle(color, [(offset.x + x * pixel_size) as f64, (offset.y + y * pixel_size) as f64,
+                        pixel_fill as f64, pixel_fill as f64],
+                        c.transform, g);
                     }
                 }
             };
