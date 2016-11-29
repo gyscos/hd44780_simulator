@@ -127,8 +127,8 @@ impl lcd_hd44780::gpio::Pin for Simulator {
                     data @ 0b01000000...0b01111111 => {
                         // Set CGRAM address
                         let mut graphics = self.graphics.lock().unwrap();
-                        let cell = (data & 0b00110000) >> 4;
-                        let addr = data & 0b00001111;
+                        let cell = (data & 0b00111000) >> 3;
+                        let addr = data & 0b00000111;
                         graphics.ac = graphics::AddressCounter::Cgram{cell: cell, addr: addr};
                     }
                     data @ 0b10000000...0b11111111 => {
