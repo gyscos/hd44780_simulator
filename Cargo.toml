@@ -9,3 +9,6 @@ image = "0.10.3"
 
 [dependencies.lcd_hd44780]
 git = "https://github.com/gyscos/hd44780"
+
+[dependencies.gpio_traits]
+git = "https://github.com/gyscos/gpio_traits"

@@ -1,19 +1,18 @@
-
-
-use lcd_hd44780;
 use std::cell::Cell;
 use std::rc::Rc;
 
-#[derive(Copy, Clone, Debug)]
-pub enum PinState {
-    Low,
-    High,
-}
+use gpio_traits::pin::PinState;
+use gpio_traits::pin::Output;
 
 pub struct BitPin {
     byte: Rc<Cell<u8>>,
     offset: u8,
 }
+
+pub fn new_state() -> Rc<Cell<PinState>> {
+    Rc::new(Cell::new(PinState::Low))
+}
+
 
 impl BitPin {
     pub fn new(byte: Rc<Cell<u8>>, offset: u8) -> Self {
@@ -35,7 +34,7 @@ impl BitPin {
     }
 }
 
-impl lcd_hd44780::gpio::Pin for BitPin {
+impl Output for BitPin {
     fn high(&mut self) {
         let byte = self.byte.get();
         self.byte.set(byte | (1 << self.offset));
@@ -44,12 +43,6 @@ impl lcd_hd44780::gpio::Pin for BitPin {
     fn low(&mut self) {
         let byte = self.byte.get();
         self.byte.set(byte & !(1 << self.offset));
-    }
-}
-
-impl PinState {
-    pub fn new() -> Rc<Cell<Self>> {
-        Rc::new(Cell::new(PinState::Low))
     }
 }
 
@@ -63,7 +56,7 @@ impl Pin {
     }
 }
 
-impl lcd_hd44780::gpio::Pin for Pin {
+impl Output for Pin {
     fn high(&mut self) {
         self.state.set(PinState::High);
     }

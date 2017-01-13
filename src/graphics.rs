@@ -85,7 +85,8 @@ impl GraphicData {
                 self.ddram[*line as usize][*addr as usize] = data;
                 // Also shift the display maybe?
                 if self.auto_shift {
-                    shift_offset(&mut self.offset, 40,
+                    shift_offset(&mut self.offset,
+                                 40,
                                  self.text_direction.direction().switch());
                 }
             }
@@ -98,8 +99,7 @@ impl GraphicData {
     }
 }
 
-pub fn shift_offset(offset: &mut u8, max: u8,
-                    direction: lcd_hd44780::commands::Direction) -> bool {
+pub fn shift_offset(offset: &mut u8, max: u8, direction: lcd_hd44780::commands::Direction) -> bool {
     match direction {
         lcd_hd44780::commands::Direction::Left => {
             let result = *offset == 0;
@@ -128,15 +128,13 @@ pub fn start_graphics(data: Arc<Mutex<GraphicData>>) {
 fn run_graphics(data: Arc<Mutex<GraphicData>>) {
     let w = 483;
     let h = 206;
-    let mut window: PistonWindow = WindowSettings::new("hd44780 simulator",
-                                                       [w, h])
+    let mut window: PistonWindow = WindowSettings::new("hd44780 simulator", [w, h])
         .exit_on_esc(true)
         .build()
         .unwrap();
 
     let image_data = include_bytes!("../assets/background.png");
-    let img = ::image::load(Cursor::new(&image_data[..]), ::image::PNG)
-        .unwrap();
+    let img = ::image::load(Cursor::new(&image_data[..]), ::image::PNG).unwrap();
     let texture = Texture::from_image(&mut window.factory,
                                       img.as_rgba8().unwrap(),
                                       &TextureSettings::new())
@@ -182,9 +180,13 @@ fn run_graphics(data: Arc<Mutex<GraphicData>>) {
                         // The most significant bit is actually the left size
                         // So mirror it all
                         let x = 4 - x;
-                        rectangle(color, [(offset.x + x * pixel_size) as f64, (offset.y + y * pixel_size) as f64,
-                        pixel_fill as f64, pixel_fill as f64],
-                        c.transform, g);
+                        rectangle(color,
+                                  [(offset.x + x * pixel_size) as f64,
+                                   (offset.y + y * pixel_size) as f64,
+                                   pixel_fill as f64,
+                                   pixel_fill as f64],
+                                  c.transform,
+                                  g);
                     }
                 }
             };
@@ -192,26 +194,33 @@ fn run_graphics(data: Arc<Mutex<GraphicData>>) {
             let mut draw_line = |line: &[u8], offset: Point| {
                 for (i, &code) in line.iter()
                     .skip(data.offset as usize)
-                        .chain(line.iter())
-                        .take(16)
-                        .enumerate() {
+                    .chain(line.iter())
+                    .take(16)
+                    .enumerate() {
 
-                            let character = if code < 8 {
-                                &data.cgram[code as usize]
-                            } else if code >= 32 {
-                                &data.cgrom[code as usize - 32]
-                            } else {
-                                panic!("Bad character code: {}", code);
-                            };
+                    let character = if code < 8 {
+                        &data.cgram[code as usize]
+                    } else if code >= 32 {
+                        &data.cgrom[code as usize - 32]
+                    } else {
+                        panic!("Bad character code: {}", code);
+                    };
 
-                            draw_char(character, Point { x: offset.x + i * char_size.x,
-                                y: offset.y});
+                    draw_char(character,
+                              Point {
+                                  x: offset.x + i * char_size.x,
+                                  y: offset.y,
+                              });
 
-                        }
+                }
             };
 
             draw_line(first_line, offset);
-            draw_line(second_line, Point { x: offset.x, y: offset.y + char_size.y });
+            draw_line(second_line,
+                      Point {
+                          x: offset.x,
+                          y: offset.y + char_size.y,
+                      });
         });
     }
 }
