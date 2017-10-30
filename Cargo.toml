@@ -4,11 +4,11 @@ name = "hd44780_simulator"
 version = "0.1.0"
 
 [dependencies]
-piston_window = "0.57.0"
-image = "0.10.3"
-
-[dependencies.lcd_hd44780]
-git = "https://github.com/gyscos/hd44780"
+image = "0.17.0"
+piston_window = "0.73.0"
 
 [dependencies.gpio_traits]
 git = "https://github.com/gyscos/gpio_traits"
+
+[dependencies.lcd_hd44780]
+git = "https://github.com/gyscos/hd44780"
