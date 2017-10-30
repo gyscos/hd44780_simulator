@@ -1,5 +1,5 @@
 use lcd_hd44780;
-use lcd_hd44780::commands::{TextDirection, Direction};
+use lcd_hd44780::commands::{Direction, TextDirection};
 use piston_window::*;
 
 use std::io::Cursor;
@@ -20,19 +20,21 @@ pub enum AddressCounter {
 impl AddressCounter {
     pub fn shift(&mut self, direction: Direction) {
         match self {
-            &mut AddressCounter::Ddram { ref mut line, ref mut addr } => {
-                if shift_offset(addr, 40, direction) {
-                    *line = 1 - *line;
+            &mut AddressCounter::Ddram {
+                ref mut line,
+                ref mut addr,
+            } => if shift_offset(addr, 40, direction) {
+                *line = 1 - *line;
+            },
+            &mut AddressCounter::Cgram {
+                ref mut cell,
+                ref mut addr,
+            } => if shift_offset(addr, 8, direction) {
+                match direction {
+                    Direction::Left => *cell -= 1,
+                    Direction::Right => *cell += 1,
                 }
-            }
-            &mut AddressCounter::Cgram { ref mut cell, ref mut addr } => {
-                if shift_offset(addr, 8, direction) {
-                    match direction {
-                        Direction::Left => *cell -= 1,
-                        Direction::Right => *cell += 1,
-                    }
-                }
-            }
+            },
         }
     }
 }
@@ -81,16 +83,24 @@ impl GraphicData {
 
     pub fn write(&mut self, data: u8) {
         match self.ac {
-            AddressCounter::Ddram { ref mut line, ref mut addr } => {
+            AddressCounter::Ddram {
+                ref mut line,
+                ref mut addr,
+            } => {
                 self.ddram[*line as usize][*addr as usize] = data;
                 // Also shift the display maybe?
                 if self.auto_shift {
-                    shift_offset(&mut self.offset,
-                                 40,
-                                 self.text_direction.direction().switch());
+                    shift_offset(
+                        &mut self.offset,
+                        40,
+                        self.text_direction.direction().switch(),
+                    );
                 }
             }
-            AddressCounter::Cgram { ref mut cell, ref mut addr } => {
+            AddressCounter::Cgram {
+                ref mut cell,
+                ref mut addr,
+            } => {
                 self.cgram[*cell as usize][*addr as usize] = data;
             }
         }
@@ -135,10 +145,11 @@ fn run_graphics(data: Arc<Mutex<GraphicData>>) {
 
     let image_data = include_bytes!("../assets/background.png");
     let img = ::image::load(Cursor::new(&image_data[..]), ::image::PNG).unwrap();
-    let texture = Texture::from_image(&mut window.factory,
-                                      img.as_rgba8().unwrap(),
-                                      &TextureSettings::new())
-        .unwrap();
+    let texture = Texture::from_image(
+        &mut window.factory,
+        img.as_rgba8().unwrap(),
+        &TextureSettings::new(),
+    ).unwrap();
     let offset = Point { x: 60, y: 66 };
 
     let pixel_size = 4;
@@ -180,47 +191,52 @@ fn run_graphics(data: Arc<Mutex<GraphicData>>) {
                         // The most significant bit is actually the left size
                         // So mirror it all
                         let x = 4 - x;
-                        rectangle(color,
-                                  [(offset.x + x * pixel_size) as f64,
-                                   (offset.y + y * pixel_size) as f64,
-                                   pixel_fill as f64,
-                                   pixel_fill as f64],
-                                  c.transform,
-                                  g);
+                        rectangle(
+                            color,
+                            [
+                                (offset.x + x * pixel_size) as f64,
+                                (offset.y + y * pixel_size) as f64,
+                                pixel_fill as f64,
+                                pixel_fill as f64,
+                            ],
+                            c.transform,
+                            g,
+                        );
                     }
                 }
             };
 
-            let mut draw_line = |line: &[u8], offset: Point| {
-                for (i, &code) in line.iter()
-                    .skip(data.offset as usize)
-                    .chain(line.iter())
-                    .take(16)
-                    .enumerate() {
+            let mut draw_line = |line: &[u8], offset: Point| for (i, &code) in line.iter()
+                .skip(data.offset as usize)
+                .chain(line.iter())
+                .take(16)
+                .enumerate()
+            {
+                let character = if code < 8 {
+                    &data.cgram[code as usize]
+                } else if code >= 32 {
+                    &data.cgrom[code as usize - 32]
+                } else {
+                    panic!("Bad character code: {}", code);
+                };
 
-                    let character = if code < 8 {
-                        &data.cgram[code as usize]
-                    } else if code >= 32 {
-                        &data.cgrom[code as usize - 32]
-                    } else {
-                        panic!("Bad character code: {}", code);
-                    };
-
-                    draw_char(character,
-                              Point {
-                                  x: offset.x + i * char_size.x,
-                                  y: offset.y,
-                              });
-
-                }
+                draw_char(
+                    character,
+                    Point {
+                        x: offset.x + i * char_size.x,
+                        y: offset.y,
+                    },
+                );
             };
 
             draw_line(first_line, offset);
-            draw_line(second_line,
-                      Point {
-                          x: offset.x,
-                          y: offset.y + char_size.y,
-                      });
+            draw_line(
+                second_line,
+                Point {
+                    x: offset.x,
+                    y: offset.y + char_size.y,
+                },
+            );
         });
     }
 }

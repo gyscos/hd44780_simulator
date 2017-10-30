@@ -1,7 +1,7 @@
+extern crate gpio_traits;
+extern crate image;
 extern crate lcd_hd44780;
 extern crate piston_window;
-extern crate image;
-extern crate gpio_traits;
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -10,7 +10,7 @@ pub mod graphics;
 pub mod pin;
 
 use gpio_traits::pin::PinState;
-use pin::{Pin, BitPin};
+use pin::{BitPin, Pin};
 
 pub struct Sleep;
 
@@ -55,7 +55,9 @@ impl gpio_traits::pin::Output for Simulator {
         let data = match self.bit_mode {
             BitMode::EightBits => self.data.get(),
             BitMode::FourBits => {
-                self.bit_mode = BitMode::FourBits2 { buffer: self.data.get() };
+                self.bit_mode = BitMode::FourBits2 {
+                    buffer: self.data.get(),
+                };
                 return;
             }
             BitMode::FourBits2 { buffer } => buffer | self.data.get() >> 4,
@@ -101,7 +103,6 @@ impl gpio_traits::pin::Output for Simulator {
                         let mut graphics = self.graphics.lock().unwrap();
                         let direction = lcd_hd44780::commands::Direction::from_u8(data);
                         graphics.ac.shift(direction);
-
                     }
                     data @ 0b00011000...0b00011111 => {
                         // Display shift

@@ -23,14 +23,16 @@ impl BitPin {
     }
 
     pub fn new_group(byte: Rc<Cell<u8>>) -> [BitPin; 8] {
-        [BitPin::new(byte.clone(), 0),
-         BitPin::new(byte.clone(), 1),
-         BitPin::new(byte.clone(), 2),
-         BitPin::new(byte.clone(), 3),
-         BitPin::new(byte.clone(), 4),
-         BitPin::new(byte.clone(), 5),
-         BitPin::new(byte.clone(), 6),
-         BitPin::new(byte.clone(), 7)]
+        [
+            BitPin::new(byte.clone(), 0),
+            BitPin::new(byte.clone(), 1),
+            BitPin::new(byte.clone(), 2),
+            BitPin::new(byte.clone(), 3),
+            BitPin::new(byte.clone(), 4),
+            BitPin::new(byte.clone(), 5),
+            BitPin::new(byte.clone(), 6),
+            BitPin::new(byte.clone(), 7),
+        ]
     }
 }
 
