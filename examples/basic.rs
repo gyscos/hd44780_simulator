@@ -34,5 +34,7 @@ fn main() {
     // Byte values under 8 refer to custom glyphs.
     driver.write_at((0, 0), b"\x00\x01Cool example\x00\x01");
     driver.write_at((1, 0), b"0123456789#@+-=*");
-    loop {}
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
 }
