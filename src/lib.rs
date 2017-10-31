@@ -14,11 +14,11 @@ use pin::{BitPin, Pin};
 
 pub struct Sleep;
 
-pub type Driver = lcd_hd44780::driver::Driver<Pin, Pin, ([BitPin; 8], Simulator), Sleep>;
+pub type Driver = lcd_hd44780::PinDriver<Pin, Pin, ([BitPin; 8], Simulator), Sleep>;
 
-impl lcd_hd44780::gpio::Sleep for Sleep {
-    fn sleep(&self, ms: usize) {
-        let millis = std::time::Duration::new(0, 1000 * ms as u32);
+impl lcd_hd44780::Sleep for Sleep {
+    fn sleep(&mut self, us: u32) {
+        let millis = std::time::Duration::new(0, 1000 * us);
         std::thread::sleep(millis);
     }
 }
@@ -181,7 +181,7 @@ impl Simulator {
 
         graphics::start_graphics(simulator.graphics.clone());
 
-        lcd_hd44780::driver::Driver::new(rs, rw, (data, simulator), Sleep)
+        lcd_hd44780::PinDriver::new(rs, rw, (data, simulator), Sleep)
     }
 }
 
