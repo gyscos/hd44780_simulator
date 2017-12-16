@@ -14,7 +14,8 @@ use pin::{BitPin, Pin};
 
 pub struct Sleep;
 
-pub type Driver = lcd_hd44780::PinDriver<Pin, Pin, ([BitPin; 8], Simulator), Sleep>;
+pub use lcd_hd44780::Driver;
+pub type SimulatedDriver = lcd_hd44780::PinDriver<Pin, Pin, ([BitPin; 8], Simulator), Sleep>;
 
 impl lcd_hd44780::Sleep for Sleep {
     fn sleep(&mut self, us: u32) {
@@ -172,7 +173,7 @@ impl Simulator {
         }
     }
 
-    pub fn driver() -> Driver {
+    pub fn driver() -> SimulatedDriver {
         let simulator = Simulator::new();
 
         let rs = Pin::new(simulator.rs.clone());
